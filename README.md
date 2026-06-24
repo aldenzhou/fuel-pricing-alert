@@ -37,6 +37,34 @@ python3 fuel_alert.py
 python3 fuel_alert.py --update-locations
 ```
 
+### Bulk-add alert locations by suburb
+
+`add_alert_locations.py` finds every station in the `All-Locations` master list
+whose suburb matches the suburb(s) you give it, and appends the new ones to the
+`Alert-Locations` tab. Suburb matching is **exact** and case-insensitive, so
+`Hornsby` will not pull in `Hornsby Heights`, and `Pennant Hills` will not pull
+in `West Pennant Hills`. Stations already in `Alert-Locations` (by Station Code)
+are skipped, and duplicates within a run are de-duplicated.
+
+Make sure the `All-Locations` tab is populated first (run
+`python3 fuel_alert.py --update-locations`).
+
+```bash
+# Add all stations in one or more suburbs (quote multi-word suburb names)
+.venv/bin/python add_alert_locations.py Hornsby Waitara "Pennant Hills"
+
+# Preview the matches without writing to the sheet
+.venv/bin/python add_alert_locations.py --dry-run Chatswood
+
+# Override the column values applied to the new rows
+.venv/bin/python add_alert_locations.py --chat-ids 123456789,987654321 --threshold 0.10 Epping
+```
+
+New rows reuse the existing sheet convention for `Fuel Types` and
+`Telegram Chat IDs` by default; override with `--fuel-types`, `--chat-ids`, and
+`--threshold`. `Station Code` and `Telegram Chat IDs` are written as **text**
+(prefixed with a leading apostrophe) so long chat IDs keep their exact value.
+
 ## Google Sheet Format
 Your Google Sheet must contain two tabs (worksheets):
 1. **`Alert-Locations`**: This is where you configure the stations you want to monitor.
