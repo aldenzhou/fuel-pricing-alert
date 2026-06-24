@@ -1,0 +1,58 @@
+# Secrets and Configuration
+.env
+google_credentials.json
+keys/
+keys/
+
+# Database
+*.db
+fuel_prices.db
+
+# Logs
+*.log
+fuel_alert.log
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environments
+.env/
+.venv/
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+.claude/
+ehthumbs.db
+Thumbs.db
+fuel_prices.db
+
+docs/superpowers/

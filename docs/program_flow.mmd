@@ -1,0 +1,48 @@
+---
+references:
+  - "File: /fuel_alert.py"
+generationTime: 2026-06-24T07:28:09.878Z
+---
+flowchart TD
+    A["Start"] --> B["Parse CLI args"]
+    B --> C[["main(update_locations)"]]
+    C --> D[["init_db()"]]
+    D --> E[["get_nsw_token(conn)"]]
+    E --> F{"update_locations?"}
+
+    F -->|Yes| G[["update_all_locations_sheet(token, conn)"]]
+    F -->|No| H[["get_locations_from_sheet()"]]
+
+    G --> G1["Request NSW reference data"]
+    G1 --> G2{"Status 200 and stations found?"}
+    G2 -->|Yes| G3["Populate 'All-Locations' sheet and save metadata"]
+    G2 -->|No| G4["notify_developer for sheet update failure"]
+    G3 --> H
+    G4 --> H
+
+    H --> I{"Next location?"}
+    I -->|Yes| J["Read station_code, station_name, fuels, chats"]
+    J --> K{"Valid station, fuels, and chats?"}
+    K -->|No| I
+    K -->|Yes| L["parse_alert_threshold(...)"]
+    L --> M[["get_station_prices(station_code, token)"]]
+    M --> N["Build current price map"]
+    N --> O{"Fuel type monitored?"}
+    O -->|No| I
+    O -->|Yes| P["Lookup previous price in SQLite"]
+    P --> Q{"First reading?"}
+    Q -->|Yes| R["Insert baseline price"]
+    R --> I
+    Q -->|No| S{"Price changed?"}
+    S -->|No| I
+    S -->|Yes| T["Update stored price"]
+    T --> U{"Meets threshold?"}
+    U -->|No| I
+    U -->|Yes| V[["format_alert_message(...)"]]
+    V --> W[["send_telegram_message(...) to chats"]]
+    W --> I
+
+    I -->|No| X["Commit changes and close connection"]
+    C -.-> Y["Error handling in main()"]
+    Y -.-> Z[["notify_developer(...)"]]
+    Z -.-> W
