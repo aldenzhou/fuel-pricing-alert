@@ -1,16 +1,16 @@
 # Secrets and Configuration
 .env
 google_credentials.json
-keys/
-keys/
+keys/*.json
 
 # Database
 *.db
-fuel_prices.db
 
-# Logs
+# Logs (keep the logs/ folder, ignore its contents)
 *.log
 fuel_alert.log
+logs/*
+!logs/.gitkeep
 
 # Python
 __pycache__/
@@ -53,6 +53,5 @@ venv.bak/
 .claude/
 ehthumbs.db
 Thumbs.db
-fuel_prices.db
 
 docs/superpowers/

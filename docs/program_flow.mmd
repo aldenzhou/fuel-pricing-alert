@@ -1,7 +1,7 @@
 ---
 references:
   - "File: /fuel_alert.py"
-generationTime: 2026-06-24T07:28:09.878Z
+generationTime: 2026-06-25T00:22:00.000Z
 ---
 flowchart TD
     A["Start"] --> B["Parse CLI args"]
@@ -11,23 +11,26 @@ flowchart TD
     E --> F{"update_locations?"}
 
     F -->|Yes| G[["update_all_locations_sheet(token, conn)"]]
-    F -->|No| H[["get_locations_from_sheet()"]]
+    F -->|No| AP[["get_all_prices(token)"]]
 
     G --> G1["Request NSW reference data"]
     G1 --> G2{"Status 200 and stations found?"}
     G2 -->|Yes| G3["Populate 'All-Locations' sheet and save metadata"]
     G2 -->|No| G4["notify_developer for sheet update failure"]
-    G3 --> H
-    G4 --> H
+    G3 --> AP
+    G4 --> AP
+
+    AP --> APC{"Prices fetched?"}
+    APC -->|No| APX["Log skip and return"]
+    APC -->|Yes| H[["get_locations_from_sheet()"]]
 
     H --> I{"Next location?"}
     I -->|Yes| J["Read station_code, station_name, fuels, chats"]
     J --> K{"Valid station, fuels, and chats?"}
     K -->|No| I
     K -->|Yes| L["parse_alert_threshold(...)"]
-    L --> M[["get_station_prices(station_code, token)"]]
-    M --> N["Build current price map"]
-    N --> O{"Fuel type monitored?"}
+    L --> M["Look up station's prices from batch (current_prices)"]
+    M --> O{"Fuel type monitored?"}
     O -->|No| I
     O -->|Yes| P["Lookup previous price in SQLite"]
     P --> Q{"First reading?"}

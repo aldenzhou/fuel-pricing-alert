@@ -4,17 +4,22 @@ Converts the optional 'Alert Threshold ($/L)' sheet cell (dollars per litre)
 into a threshold in cents per litre, or None when no valid threshold is set.
 """
 
-import io
+import logging
 import unittest
-from contextlib import redirect_stdout
 
-from fuel_alert import parse_alert_threshold
+from fuel_alert import logger, parse_alert_threshold
+
+# parse_alert_threshold logs warnings for invalid input via the 'fuel_alert'
+# logger. The tests don't configure logging, so attach a NullHandler to keep
+# those warnings from falling back to Python's stderr handler and cluttering the
+# test output. The dedicated logging test below uses assertLogs, which captures
+# records regardless of this handler.
+logger.addHandler(logging.NullHandler())
 
 
 def parse_quiet(raw, station="TestStation"):
-    """Call parse_alert_threshold while swallowing its stdout logging."""
-    with redirect_stdout(io.StringIO()):
-        return parse_alert_threshold(raw, station)
+    """Call parse_alert_threshold (warnings are swallowed by the NullHandler)."""
+    return parse_alert_threshold(raw, station)
 
 
 class TestParseAlertThreshold(unittest.TestCase):
@@ -57,11 +62,11 @@ class TestParseAlertThreshold(unittest.TestCase):
         self.assertIsNone(parse_quiet("-0.10"))
 
     def test_invalid_value_is_logged(self):
-        buf = io.StringIO()
-        with redirect_stdout(buf):
+        with self.assertLogs(logger, level="WARNING") as cm:
             parse_alert_threshold("abc", "Ampol Foodary Thornleigh")
-        self.assertIn("Invalid", buf.getvalue())
-        self.assertIn("Ampol Foodary Thornleigh", buf.getvalue())
+        output = "\n".join(cm.output)
+        self.assertIn("Invalid", output)
+        self.assertIn("Ampol Foodary Thornleigh", output)
 
 
 if __name__ == "__main__":

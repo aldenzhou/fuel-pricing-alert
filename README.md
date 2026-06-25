@@ -98,11 +98,20 @@ negative values are treated as blank.
 
 ## Testing
 
-Unit tests live in the [`tests/`](tests/) folder and use Python's built-in
-`unittest` (no extra dependencies). Run them from the project root:
+Unit tests live in the [`tests/`](tests/) folder. They're written with Python's
+built-in `unittest`, so they run with **no extra dependencies**:
 
 ```bash
 python3 -m unittest discover -s tests -v
+```
+
+They also run under [pytest](https://docs.pytest.org/) if you prefer its output
+and filtering. Install the dev dependency (using [uv](https://docs.astral.sh/uv/)),
+then run it:
+
+```bash
+uv pip install -r requirements-dev.txt
+python3 -m pytest tests/ -v
 ```
 
 See [`tests/README.md`](tests/README.md) for what's covered and how to add more.

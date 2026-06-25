@@ -1,8 +1,8 @@
 # Unit Tests
 
 Unit tests for `fuel_alert.py`, covering the configurable parts of the
-price-alert logic. They use Python's built-in `unittest` — **no extra
-dependencies** are required.
+price-alert logic. They're written with Python's built-in `unittest`, so the
+suite runs with **no extra dependencies**.
 
 ## Running the tests
 
@@ -19,8 +19,27 @@ python3 -m unittest discover -s tests -v
 python3 -m unittest tests.test_should_send_alert -v
 ```
 
+### With pytest (optional)
+
+The same tests also run under [pytest](https://docs.pytest.org/), which gives
+nicer output and test filtering. Install the dev dependency with
+[uv](https://docs.astral.sh/uv/) first:
+
+```bash
+# Install pytest into the project's .venv
+uv pip install -r requirements-dev.txt
+
+# Run the whole suite
+python3 -m pytest tests/ -v
+
+# Run a single module, or filter by name
+python3 -m pytest tests/test_should_send_alert.py -v
+python3 -m pytest tests/ -k threshold
+```
+
 The `tests/__init__.py` adds the project root to `sys.path`, so the tests can
-`import fuel_alert` no matter where the runner is launched from.
+`import fuel_alert` no matter where the runner (unittest or pytest) is launched
+from.
 
 ## What's covered
 

@@ -1,0 +1,5 @@
+# Development/test-only dependencies. Install with:
+#   uv pip install -r requirements-dev.txt
+# The test suite also runs without these via Python's built-in unittest:
+#   python3 -m unittest discover -s tests
+pytest==8.4.2
