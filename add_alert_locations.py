@@ -20,11 +20,14 @@ Stations already present in 'Alert-Locations' (by Station Code) are skipped.
 """
 
 import os
-import re
 import argparse
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from dotenv import load_dotenv
+
+# Single source of truth for suburb parsing; defined in fuel_alert so the price
+# checker and this tool can never drift apart.
+from fuel_alert import extract_suburb
 
 load_dotenv()
 
@@ -39,10 +42,6 @@ SCOPE = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/au
 DEFAULT_FUEL_TYPES = os.getenv('DEFAULT_FUEL_TYPES') or "E10,U91,P95,P98,DL,PDL,LPG"
 DEFAULT_CHAT_IDS = os.getenv('DEFAULT_ALERT_CHAT_IDS', '')
 DEFAULT_THRESHOLD = ""
-
-# NSW addresses end with "<SUBURB> NSW <postcode>"; capture the suburb. Suburbs
-# appear in either UPPER or Title case in the data, so match case-insensitively.
-SUBURB_RE = re.compile(r",?\s*([A-Za-z][A-Za-z .'\-]*?)\s+NSW\s+\d{4}\s*$")
 
 
 def open_spreadsheet(client):
@@ -59,12 +58,6 @@ def open_spreadsheet(client):
             if f.get('name') == SHEET_NAME:
                 return client.open_by_key(f['id'])
         raise
-
-
-def extract_suburb(address):
-    """Return the suburb from a NSW address, or None if it can't be parsed."""
-    match = SUBURB_RE.search(str(address).strip())
-    return match.group(1).strip() if match else None
 
 
 def as_text(value):

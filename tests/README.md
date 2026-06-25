@@ -53,6 +53,8 @@ dependency.
 | `test_parse_alert_threshold.py` | `parse_alert_threshold` | Converting the `Alert Threshold ($/L)` cell (dollars) to cents/L; blank/invalid/negative → `None`; invalid values are logged. |
 | `test_should_send_alert.py` | `should_send_alert` | The alert decision: no-threshold = any change; threshold boundary (9.9 quiet, 10.0 alerts); drops counted; zero threshold = any change. |
 | `test_real_sheet_rows.py` | all of the above | End-to-end over the two configured stations (2608 with a `0.1` threshold, 2707 blank), combining cell parsing with the alert decision. |
+| `test_extract_suburb.py` | `extract_suburb` | Parsing the suburb from a NSW address (title/upper case, multi-word, unit-prefixed); unparseable/blank/non-string → `None`. |
+| `test_price_history.py` | `init_db`, `record_price_history`, `backfill_price_history` | New trend-tracking schema: `price_history`/`stations` created and idempotent; readings append as a time series; one-time backfill from existing `prices` baselines that never re-runs. Uses a temp DB via `DB_FILE`. |
 
 ## Assumptions
 

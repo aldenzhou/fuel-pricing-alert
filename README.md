@@ -96,6 +96,44 @@ negative values are treated as blank.
 > smaller threshold or leave the column blank. See
 > [GOOGLE_SHEETS_SETUP.md](docs/GOOGLE_SHEETS_SETUP.md) for a worked example.
 
+## Price history & trend analysis
+
+Every run records price movements to the local SQLite database (`fuel_prices.db`)
+so you can analyse trends per fuel type or per suburb. Three relevant tables:
+
+| Table | Purpose |
+| --- | --- |
+| `prices` | Current baseline per `(station_code, fuel_type)`, used for change detection. |
+| `price_history` | Append-only log of every price *change* (and each combo's first-seen baseline), with a `recorded_at` timestamp. |
+| `stations` | Maps `station_code` → `suburb` (plus brand/name/address); populated during `--update-locations` runs. |
+
+A `price_history` row is written whenever a monitored price is first seen or
+changes — **independent of the alert threshold** (the threshold only controls
+whether a Telegram alert is sent, not whether the data point is logged). Prices
+stay constant between recorded points, so the series reconstructs exactly without
+logging every run.
+
+Example queries:
+
+```sql
+-- Price trend for one fuel type at one station
+SELECT recorded_at, price
+FROM price_history
+WHERE station_code = '2608' AND fuel_type = 'U91'
+ORDER BY recorded_at;
+
+-- Average price by suburb and fuel type (requires a populated `stations` table)
+SELECT s.suburb, h.fuel_type, AVG(h.price) AS avg_price, COUNT(*) AS readings
+FROM price_history h
+JOIN stations s USING (station_code)
+GROUP BY s.suburb, h.fuel_type
+ORDER BY s.suburb, h.fuel_type;
+```
+
+> The `stations` table is filled by the weekly `python3 fuel_alert.py --update-locations`
+> run. Until that runs, suburb grouping returns no rows; per-fuel/per-station
+> queries against `price_history` work immediately.
+
 ## Testing
 
 Unit tests live in the [`tests/`](tests/) folder. They're written with Python's

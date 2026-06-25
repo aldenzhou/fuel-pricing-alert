@@ -1,4 +1,5 @@
 import os
+import re
 import sys
 import sqlite3
 import requests
@@ -87,19 +88,101 @@ def setup_logging():
     logger.propagate = False
 
 
+# NSW addresses end with "<SUBURB> NSW <postcode>"; capture the suburb. Suburbs
+# appear in either UPPER or Title case in the data, so match case-insensitively.
+# This is the single source of truth for suburb parsing; add_alert_locations.py
+# imports extract_suburb from here.
+SUBURB_RE = re.compile(r",?\s*([A-Za-z][A-Za-z .'\-]*?)\s+NSW\s+\d{4}\s*$")
+
+
+def extract_suburb(address):
+    """Return the suburb from a NSW address, or None if it can't be parsed."""
+    match = SUBURB_RE.search(str(address).strip())
+    return match.group(1).strip() if match else None
+
+
 def init_db():
-    """Initialize SQLite database for storing prices and API tokens."""
+    """Initialize SQLite database for storing prices, history, and API tokens.
+
+    ``prices`` holds the current baseline per (station, fuel) used for change
+    detection. ``price_history`` is an append-only log of every price *change*
+    (and each combo's first-seen baseline), keyed by station and fuel with a
+    timestamp, for trend analysis. ``stations`` maps station codes to suburb (and
+    brand/name/address) so history can be grouped by suburb; it is populated
+    during ``--update-locations`` runs.
+    """
     conn = sqlite3.connect(DB_FILE)
     c = conn.cursor()
     c.execute('''CREATE TABLE IF NOT EXISTS prices
                  (station_code TEXT, fuel_type TEXT, price REAL,
                  PRIMARY KEY (station_code, fuel_type))''')
+    c.execute('''CREATE TABLE IF NOT EXISTS price_history
+                 (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  station_code TEXT NOT NULL,
+                  station_name TEXT,
+                  fuel_type TEXT NOT NULL,
+                  price REAL NOT NULL,
+                  recorded_at TEXT NOT NULL)''')
+    c.execute('''CREATE INDEX IF NOT EXISTS idx_ph_station_fuel
+                 ON price_history(station_code, fuel_type)''')
+    c.execute('''CREATE INDEX IF NOT EXISTS idx_ph_recorded_at
+                 ON price_history(recorded_at)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS stations
+                 (station_code TEXT PRIMARY KEY,
+                  brand TEXT,
+                  name TEXT,
+                  suburb TEXT,
+                  address TEXT,
+                  updated_at TEXT)''')
     c.execute('''CREATE TABLE IF NOT EXISTS auth
                  (token TEXT, expires_at REAL)''')
     c.execute('''CREATE TABLE IF NOT EXISTS metadata
                  (key TEXT PRIMARY KEY, value TEXT)''')
     conn.commit()
+
+    backfill_price_history(conn)
     return conn
+
+
+def backfill_price_history(conn):
+    """Seed price_history from the current `prices` baselines, once.
+
+    Runs only when price_history is empty, so existing monitored (station, fuel)
+    combos get a starting data point instead of leaving the trend log empty until
+    the next price change. Guarded by the emptiness check so it never re-runs and
+    can't duplicate rows on subsequent invocations.
+    """
+    c = conn.cursor()
+    if c.execute("SELECT 1 FROM price_history LIMIT 1").fetchone() is not None:
+        return
+
+    rows = c.execute("SELECT station_code, fuel_type, price FROM prices").fetchall()
+    if not rows:
+        return
+
+    recorded_at = datetime.now().isoformat(timespec="seconds")
+    c.executemany(
+        "INSERT INTO price_history (station_code, station_name, fuel_type, price, recorded_at) "
+        "VALUES (?, ?, ?, ?, ?)",
+        [(code, None, fuel, price, recorded_at) for code, fuel, price in rows],
+    )
+    conn.commit()
+    logger.info(f"Backfilled price_history with {len(rows)} baseline rows from 'prices'.")
+
+
+def record_price_history(c, station_code, station_name, fuel_type, price, recorded_at):
+    """Append one price reading to the price_history log.
+
+    Called whenever a price is first seen or changes, so the table accumulates a
+    per-(station, fuel) time series for trend analysis. Between recorded points
+    the price is unchanged, so the series reconstructs exactly without logging
+    every run.
+    """
+    c.execute(
+        "INSERT INTO price_history (station_code, station_name, fuel_type, price, recorded_at) "
+        "VALUES (?, ?, ?, ?, ?)",
+        (station_code, station_name, fuel_type, price, recorded_at),
+    )
 
 def get_nsw_token(conn):
     """Get OAuth token, using cached version if still valid."""
@@ -350,16 +433,31 @@ def update_all_locations_sheet(token, conn):
                 logger.warning("No stations found in the API response.")
                 return
 
-            # Prepare data for Google Sheets
+            # Prepare data for Google Sheets and the local stations reference
+            # table (the latter maps station_code -> suburb so price_history can
+            # be grouped by suburb for trend analysis).
             sheet_data = [["Station Code", "Brand", "Name", "Address"]]
+            station_rows = []
             for s in station_list:
                 if isinstance(s, dict):
-                    sheet_data.append([
-                        str(s.get('code', s.get('stationcode', ''))),
-                        str(s.get('brand', '')),
-                        str(s.get('name', '')),
-                        str(s.get('address', ''))
-                    ])
+                    code = str(s.get('code', s.get('stationcode', '')))
+                    brand = str(s.get('brand', ''))
+                    name = str(s.get('name', ''))
+                    address = str(s.get('address', ''))
+                    sheet_data.append([code, brand, name, address])
+                    if code:
+                        station_rows.append(
+                            (code, brand, name, extract_suburb(address), address, today_str))
+
+            if station_rows:
+                c.executemany(
+                    "INSERT OR REPLACE INTO stations "
+                    "(station_code, brand, name, suburb, address, updated_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?)",
+                    station_rows,
+                )
+                conn.commit()
+                logger.info(f"Updated 'stations' table with {len(station_rows)} stations.")
 
             # Update Google Sheet
             scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
@@ -388,6 +486,10 @@ def main(update_locations=False):
     logger.info("Starting fuel price check...")
     conn = init_db()
     c = conn.cursor()
+
+    # One timestamp per run so all price_history rows written this run share it,
+    # which keeps trend queries clean. Local time, matching the logs.
+    run_ts = datetime.now().isoformat(timespec="seconds")
 
     try:
         token = get_nsw_token(conn)
@@ -453,6 +555,8 @@ def main(update_locations=False):
                         logger.info(f"Initial price for {station_name} ({fuel_type}): {new_price}")
                         c.execute("INSERT INTO prices (station_code, fuel_type, price) VALUES (?, ?, ?)",
                                   (station_code, fuel_type, new_price))
+                        # Log the baseline as the first data point for trend analysis.
+                        record_price_history(c, station_code, station_name, fuel_type, new_price, run_ts)
                     elif row[0] != new_price:
                         old_price = row[0]
                         # Price changed. Always refresh the stored baseline so the
@@ -460,6 +564,9 @@ def main(update_locations=False):
                         logger.info(f"Price change detected for {station_name} ({fuel_type}): {old_price} -> {new_price}")
                         c.execute("UPDATE prices SET price=? WHERE station_code=? AND fuel_type=?",
                                   (new_price, station_code, fuel_type))
+                        # Record every change for trend analysis, independent of
+                        # the alert threshold (the threshold only gates the alert).
+                        record_price_history(c, station_code, station_name, fuel_type, new_price, run_ts)
 
                         # Only alert when the move meets the location's threshold.
                         if not should_send_alert(old_price, new_price, threshold_cents):
